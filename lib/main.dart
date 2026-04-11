@@ -9,6 +9,52 @@ void main() {
   runApp(const MyApp());
 }
 
+enum Category { camisetas, zapatos, pantalones, chaquetas }
+
+extension CategoryInfo on Category {
+  String get label {
+    switch (this) {
+      case Category.camisetas:
+        return 'Camisetas';
+      case Category.zapatos:
+        return 'Zapatos';
+      case Category.pantalones:
+        return 'Pantalones';
+      case Category.chaquetas:
+        return 'Chaquetas';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case Category.camisetas:
+        return Icons.checkroom;
+      case Category.zapatos:
+        return Icons.directions_run;
+      case Category.pantalones:
+        return Icons.straight;
+      case Category.chaquetas:
+        return Icons.shopping_bag;
+    }
+  }
+}
+
+class Garment {
+  Garment({
+    required this.id,
+    required this.name,
+    required this.category,
+    this.photo,
+    this.isFavorite = false,
+  });
+
+  final String id;
+  String name;
+  Category category;
+  XFile? photo;
+  bool isFavorite;
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
