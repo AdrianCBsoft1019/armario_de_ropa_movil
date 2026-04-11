@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'providers/wardrobe_provider.dart';
 import 'services/camera_service.dart';
+import 'models/garment.dart';
+import 'providers/wardrobe_provider.dart';
 
 void main() {
   runApp(
@@ -12,22 +14,72 @@ void main() {
   );
 }
 
+enum Category { camisetas, zapatos, pantalones, chaquetas }
+
+extension CategoryInfo on Category {
+  String get label {
+    switch (this) {
+      case Category.camisetas:
+        return 'Camisetas';
+      case Category.zapatos:
+        return 'Zapatos';
+      case Category.pantalones:
+        return 'Pantalones';
+      case Category.chaquetas:
+        return 'Chaquetas';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case Category.camisetas:
+        return Icons.checkroom;
+      case Category.zapatos:
+        return Icons.directions_run;
+      case Category.pantalones:
+        return Icons.straight;
+      case Category.chaquetas:
+        return Icons.shopping_bag;
+    }
+  }
+}
+
+class Garment {
+  Garment({
+    required this.id,
+    required this.name,
+    required this.category,
+    this.photo,
+    this.isFavorite = false,
+  });
+
+  final String id;
+  String name;
+  Category category;
+  XFile? photo;
+  bool isFavorite;
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'StyleStack - Guardarropa Digital',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.light,
+    return ChangeNotifierProvider(
+      create: (_) => WardrobeProvider(),
+      child: MaterialApp(
+        title: 'Armario Digital',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF6C63FF),
+            brightness: Brightness.light,
+          ),
+          useMaterial3: true,
+          fontFamily: 'Roboto',
         ),
-        useMaterial3: true,
+        home: const HomeScreen(),
       ),
-      home: const HomeScreen(),
     );
   }
 }
@@ -41,219 +93,282 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final CameraService _cameraService = CameraService();
+  final TextEditingController _nameController = TextEditingController();
+  String _selectedCategory = 'Camiseta';
 
-  @override
-  void initState() {
-    super.initState();
-    // Cargar prendas guardadas al iniciar
-    Provider.of<WardrobeProvider>(context, listen: false).loadGarments();
-  }
+  final List<String> _categories = [
+    'Camiseta',
+    'Pantalón',
+    'Zapatos',
+    'Chaqueta',
+    'Accesorio',
+    'Vestido',
+    'Falda',
+    'Otro',
+  ];
 
-  Future<void> _takePhoto() async {
-    final photo = await _cameraService.takePhoto();
-    if (photo != null && mounted) {
-      final nameController = TextEditingController();
-      String selectedCategory = 'Camiseta';
+  void _showAddGarmentSheet() {
+    _nameController.clear();
+    _selectedCategory = 'Camiseta';
 
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Nueva Prenda'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre de la prenda',
-                  border: OutlineInputBorder(),
-                ),
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        String? photoPath;
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              const SizedBox(height: 12),
-              StatefulBuilder(
-                builder: (context, setDialogState) {
-                  return DropdownButtonFormField<String>(
-                    value: selectedCategory,
-                    decoration: const InputDecoration(
-                      labelText: 'Categoría',
-                      border: OutlineInputBorder(),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                left: 24,
+                right: 24,
+                top: 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                    items: ['Camiseta', 'Pantalón', 'Zapatos', 'Accesorio', 'Chaqueta']
-                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Añadir Prenda',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  GestureDetector(
+                    onTap: () async {
+                      final path = await _cameraService.takePhoto();
+                      if (path != null) {
+                        setSheetState(() => photoPath = path);
+                      }
+                    },
+                    child: Container(
+                      height: 180,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey[300]!, width: 2),
+                      ),
+                      child: photoPath != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: Image.file(File(photoPath!),
+                                  fit: BoxFit.cover, width: double.infinity),
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.camera_alt,
+                                    size: 48, color: Colors.grey[400]),
+                                const SizedBox(height: 8),
+                                Text('Toca para tomar foto',
+                                    style: TextStyle(
+                                        color: Colors.grey[500],
+                                        fontSize: 16)),
+                              ],
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _nameController,
+                    decoration: InputDecoration(
+                      labelText: 'Nombre de la prenda',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      prefixIcon: const Icon(Icons.edit),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: _selectedCategory,
+                    decoration: InputDecoration(
+                      labelText: 'Categoría',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      prefixIcon: const Icon(Icons.category),
+                    ),
+                    items: _categories
+                        .map((cat) =>
+                            DropdownMenuItem(value: cat, child: Text(cat)))
                         .toList(),
                     onChanged: (value) {
-                      setDialogState(() {
-                        selectedCategory = value!;
-                      });
+                      setSheetState(
+                          () => _selectedCategory = value ?? 'Camiseta');
                     },
-                  );
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (nameController.text.isNotEmpty) {
-                  Provider.of<WardrobeProvider>(context, listen: false)
-                      .addGarment(
-                    nameController.text,
-                    photo.path,
-                    selectedCategory,
-                  );
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Prenda guardada con éxito')),
-                  );
-                }
-              },
-              child: const Text('Guardar'),
-            ),
-          ],
-        ),
-      );
-    }
-  }
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      if (_nameController.text.isEmpty || photoPath == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text(
+                                  'Debes tomar una foto y escribir un nombre')),
+                        );
+                        return;
+                      }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('👕 StyleStack'),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.shuffle),
-            tooltip: 'Generar Outfit',
-            onPressed: () {
-              final provider = Provider.of<WardrobeProvider>(context, listen: false);
-              final outfit = provider.generateRandomOutfit();
-              if (outfit.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Agrega prendas primero')),
-                );
-                return;
-              }
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('🎲 Outfit Sugerido'),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: outfit
-                        .map((g) => ListTile(
-                              leading: const Icon(Icons.checkroom),
-                              title: Text(g.name),
-                              subtitle: Text(g.category),
-                            ))
-                        .toList(),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cerrar'),
+                      final garment = Garment(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        name: _nameController.text.trim(),
+                        category: _selectedCategory,
+                        imagePath: photoPath!,
+                      );
+
+                      // Usar Provider en lugar de setState local
+                      context
+                          .read<WardrobeProvider>()
+                          .addGarment(garment);
+
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content:
+                                Text('${garment.name} añadida al armario')),
+                      );
+                    },
+                    icon: const Icon(Icons.save),
+                    label: const Text('Guardar Prenda'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: Consumer<WardrobeProvider>(
-        builder: (context, provider, child) {
-          if (provider.garments.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.checkroom, size: 80, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'Tu guardarropa está vacío',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Toca + para agregar prendas',
-                    style: TextStyle(color: Colors.grey),
                   ),
                 ],
               ),
             );
-          }
+          },
+        );
+      },
+    );
+  }
 
-          return GridView.builder(
-            padding: const EdgeInsets.all(12),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.75,
-            ),
-            itemCount: provider.garments.length,
-            itemBuilder: (context, index) {
-              final garment = provider.garments[index];
-              return Card(
-                clipBehavior: Clip.antiAlias,
-                elevation: 3,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: Image.asset(
-                        garment.photoPath,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: Colors.grey[200],
-                            child: const Icon(Icons.image_not_supported, size: 50),
-                          );
-                        },
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<WardrobeProvider>(
+      builder: (context, wardrobe, child) {
+        final garments = wardrobe.garments;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Mi Armario'),
+            centerTitle: true,
+          ),
+          body: garments.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.checkroom, size: 80, color: Colors.grey[300]),
+                      const SizedBox(height: 16),
+                      Text('Tu armario está vacío',
+                          style: TextStyle(
+                              fontSize: 18, color: Colors.grey[500])),
+                      const SizedBox(height: 8),
+                      Text('Toca + para añadir tu primera prenda',
+                          style: TextStyle(
+                              fontSize: 14, color: Colors.grey[400])),
+                    ],
+                  ),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.all(16),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.75,
+                  ),
+                  itemCount: garments.length,
+                  itemBuilder: (context, index) {
+                    final garment = garments[index];
+                    return Card(
+                      clipBehavior: Clip.antiAlias,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      elevation: 2,
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(
-                            garment.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          Expanded(
+                            child: Image.file(File(garment.imagePath),
+                                fit: BoxFit.cover),
                           ),
-                          const SizedBox(height: 4),
-                          Chip(
-                            label: Text(
-                              garment.category,
-                              style: const TextStyle(fontSize: 11),
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(garment.name,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis),
+                                      Text(garment.category,
+                                          style: TextStyle(
+                                              color: Colors.grey[600],
+                                              fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () =>
+                                      wardrobe.toggleFavorite(garment.id),
+                                  child: Icon(
+                                    garment.isFavorite
+                                        ? Icons.favorite
+                                        : Icons.favorite_border,
+                                    color: garment.isFavorite
+                                        ? Colors.red
+                                        : Colors.grey,
+                                    size: 20,
+                                  ),
+                                ),
+                              ],
                             ),
-                            visualDensity: VisualDensity.compact,
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _takePhoto,
-        icon: const Icon(Icons.camera_alt),
-        label: const Text('Agregar'),
-      ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: _showAddGarmentSheet,
+            child: const Icon(Icons.add),
+          ),
+        );
+      },
     );
   }
 }
