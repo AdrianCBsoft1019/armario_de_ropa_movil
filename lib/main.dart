@@ -1,7 +1,8 @@
-﻿import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+
+import 'screens/home_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -80,19 +81,148 @@ class MyApp extends StatelessWidget {
           foregroundColor: Colors.white,
         ),
       ),
-      home: const MyHomePage(title: 'Mi Armario'),
+      home: const HomeScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
   final String title;
 
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
+  void _showAddGarmentSheet() {
+    _nameController.clear();
+    _selectedCategory = 'Camiseta';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        String? photoPath;
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                left: 24,
+                right: 24,
+                top: 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Handle bar
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Añadir Prenda',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Botón de cámara / preview de foto
+                  GestureDetector(
+                    onTap: () async {
+                      final path = await _cameraService.takePhoto();
+                      if (path != null) {
+                        setSheetState(() {
+                          photoPath = path;
+                        });
+                      }
+                    },
+                    child: Container(
+                      height: 180,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.grey[300]!,
+                          width: 2,
+                          style: BorderStyle.solid,
+                        ),
+                      ),
+                      child: photoPath != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: Image.file(
+                                File(photoPath!),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                              ),
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.camera_alt,
+                                    size: 48, color: Colors.grey[400]),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Toca para tomar foto',
+                                  style: TextStyle(
+                                    color: Colors.grey[500],
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Campo nombre
+                  TextField(
+                    controller: _nameController,
+                    decoration: InputDecoration(
+                      labelText: 'Nombre de la prenda',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      prefixIcon: const Icon(Icons.edit),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Selector de categoría
+                  DropdownButtonFormField<String>(
+                    value: _selectedCategory,
+                    decoration: InputDecoration(
+                      labelText: 'Categoría',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      prefixIcon: const Icon(Icons.category),
+                    ),
+                    items: _categories.map((cat) {
+                      return DropdownMenuItem(value: cat, child: Text(cat));
+                    }).toList(),
+                    onChanged: (value) {
+                      setSheetState(() {
+                        _selectedCategory = value ?? 'Camiseta';
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 20),
 
 class _MyHomePageState extends State<MyHomePage> {
   final ImagePicker _picker = ImagePicker();
