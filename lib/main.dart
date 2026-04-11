@@ -6,7 +6,12 @@ import 'models/garment.dart';
 import 'providers/wardrobe_provider.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => WardrobeProvider(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 enum Category { camisetas, zapatos, pantalones, chaquetas }
