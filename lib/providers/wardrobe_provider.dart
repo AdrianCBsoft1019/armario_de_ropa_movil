@@ -37,7 +37,6 @@ class WardrobeProvider extends ChangeNotifier {
     return _garments.where((g) => g.category == category).toList();
   }
 
-  /// Genera un outfit aleatorio: una prenda de cada categoría disponible.
   List<Garment> getRandomOutfit() {
     if (_garments.isEmpty) return [];
 
