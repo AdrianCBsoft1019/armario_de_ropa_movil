@@ -1,46 +1,46 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-
+import 'package:flutter/services.dart'; // Importante para la vibración
+import 'package:provider/provider.dart';
 import '../models/clothing_product.dart';
+import '../models/garment.dart';
+import '../providers/wardrobe_provider.dart';
 import '../services/api_service.dart';
+import '../services/camera_service.dart';
 import '../widgets/product_card.dart';
 
-enum ClothingSection { all, camisetas, pantalones, zapatos, abrigos }
+// ─────────────────────────────────────────────
+// Secciones / Categorías
+// ─────────────────────────────────────────────
+enum ClothingSection { todo, camisetas, pantalones, zapatos, abrigos, vestidos }
 
 extension ClothingSectionInfo on ClothingSection {
   String get label {
     switch (this) {
-      case ClothingSection.all:
-        return 'Todo';
-      case ClothingSection.camisetas:
-        return 'Camisas';
-      case ClothingSection.pantalones:
-        return 'Pantalones';
-      case ClothingSection.zapatos:
-        return 'Zapatos';
-      case ClothingSection.abrigos:
-        return 'Abrigos';
+      case ClothingSection.todo:       return 'Todo';
+      case ClothingSection.camisetas:  return 'Camisas';
+      case ClothingSection.pantalones: return 'Pantalones';
+      case ClothingSection.zapatos:    return 'Zapatos';
+      case ClothingSection.abrigos:    return 'Abrigos';
+      case ClothingSection.vestidos:   return 'Vestidos';
     }
   }
 
   IconData get icon {
     switch (this) {
-      case ClothingSection.all:
-        return Icons.checkroom;
-      case ClothingSection.camisetas:
-        return Icons.checkroom;
-      case ClothingSection.pantalones:
-        return Icons.straighten;
-      case ClothingSection.zapatos:
-        return Icons.directions_run;
-      case ClothingSection.abrigos:
-        return Icons.shopping_bag;
+      case ClothingSection.todo:       return Icons.grid_view;
+      case ClothingSection.camisetas:  return Icons.checkroom;
+      case ClothingSection.pantalones: return Icons.straighten;
+      case ClothingSection.zapatos:    return Icons.directions_run;
+      case ClothingSection.abrigos:    return Icons.shopping_bag;
+      case ClothingSection.vestidos:   return Icons.dry_cleaning;
     }
   }
 }
 
+// ─────────────────────────────────────────────
+// HomeScreen con 2 tabs
+// ─────────────────────────────────────────────
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -48,12 +48,61 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Mi Armario'),
+        centerTitle: true,
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.store), text: 'Catálogo'),
+            Tab(icon: Icon(Icons.checkroom), text: 'Mi Armario'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: const [
+          _CatalogTab(),
+          _WardrobeTab(),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// Tab 1: Catálogo (productos de la API)
+// ─────────────────────────────────────────────
+class _CatalogTab extends StatefulWidget {
+  const _CatalogTab();
+
+  @override
+  State<_CatalogTab> createState() => _CatalogTabState();
+}
+
+class _CatalogTabState extends State<_CatalogTab> {
   final ApiService _apiService = ApiService();
-  final ImagePicker _picker = ImagePicker();
   late Future<List<ClothingProduct>> _futureProducts;
-  List<ClothingProduct> _wardrobeProducts = [];
-  ClothingSection _selectedSection = ClothingSection.all;
+  ClothingSection _selectedSection = ClothingSection.todo;
 
   @override
   void initState() {
@@ -61,265 +110,338 @@ class _HomeScreenState extends State<HomeScreen> {
     _futureProducts = _apiService.fetchClothingProducts();
   }
 
-  void _refreshProducts() {
-    setState(() {
-      _futureProducts = _apiService.fetchClothingProducts();
-    });
-  }
-
-  Future<void> _showAddOptions() async {
-    final source = await showDialog<ImageSource>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Agregar Ropa'),
-        content: const Text('¿Cómo quieres agregar la imagen?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(ImageSource.camera),
-            child: const Text('Tomar Foto'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(ImageSource.gallery),
-            child: const Text('Subir Imagen'),
-          ),
-        ],
-      ),
-    );
-
-    if (source != null) {
-      final XFile? image = await _picker.pickImage(source: source);
-      if (image != null) {
-        await _selectCategoryAndAdd(image);
-      }
+  bool _matchesSection(ClothingProduct p, ClothingSection s) {
+    final cat = p.category.toLowerCase();
+    switch (s) {
+      case ClothingSection.todo:       return true;
+      case ClothingSection.camisetas:  return cat.contains('camisa') || cat.contains('shirt');
+      case ClothingSection.pantalones: return cat.contains('pantalon') || cat.contains('pant');
+      case ClothingSection.zapatos:    return cat.contains('zapato') || cat.contains('shoe');
+      case ClothingSection.abrigos:    return cat.contains('abrigo') || cat.contains('chaqueta') || cat.contains('jacket');
+      case ClothingSection.vestidos:   return cat.contains('vestido') || cat.contains('dress');
     }
-  }
-
-  Future<void> _selectCategoryAndAdd(XFile image) async {
-    final categories = [
-      'Camisas',
-      'Pantalones',
-      'Zapatos',
-      'Abrigos',
-      'Vestidos',
-    ];
-    final selectedCategory = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Seleccionar Categoría'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: categories
-              .map(
-                (cat) => ListTile(
-                  title: Text(cat),
-                  onTap: () => Navigator.of(context).pop(cat),
-                ),
-              )
-              .toList(),
-        ),
-      ),
-    );
-
-    if (selectedCategory != null) {
-      final descriptionController = TextEditingController();
-      final description = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Agregar Descripción'),
-          content: TextField(
-            controller: descriptionController,
-            decoration: const InputDecoration(
-              hintText: 'Describe tu prenda...',
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 3,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(''),
-              child: const Text('Sin descripción'),
-            ),
-            TextButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(descriptionController.text),
-              child: const Text('Guardar'),
-            ),
-          ],
-        ),
-      );
-
-      if (description != null) {
-        final newProduct = ClothingProduct(
-          id: DateTime.now().millisecondsSinceEpoch,
-          title: 'Ropa Personalizada',
-          price: 0.0,
-          description: description.isEmpty
-              ? 'Agregado desde ${image.name}'
-              : description,
-          category: selectedCategory,
-          image: image.path,
-          rating: 0.0,
-          ratingCount: 0,
-        );
-        setState(() {
-          _wardrobeProducts.add(newProduct);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ropa agregada al armario')),
-        );
-      }
-    }
-  }
-
-  bool _matchesSection(ClothingProduct product, ClothingSection section) {
-    final title = product.title.toLowerCase();
-    switch (section) {
-      case ClothingSection.all:
-        return true;
-      case ClothingSection.camisetas:
-        return title.contains('camisa') || title.contains('shirt');
-      case ClothingSection.pantalones:
-        return title.contains('pantalon') || title.contains('pant');
-      case ClothingSection.zapatos:
-        return title.contains('zapato') || title.contains('shoe');
-      case ClothingSection.abrigos:
-        return title.contains('abrigo') ||
-            title.contains('chaqueta') ||
-            title.contains('jacket') ||
-            title.contains('coat');
-    }
-  }
-
-  List<ClothingProduct> _filterProducts(
-    List<ClothingProduct> products,
-    ClothingSection section,
-  ) {
-    return products
-        .where((product) => _matchesSection(product, section))
-        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Mi Armario')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Productos de ropa',
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Filtra por camisas, pantalones, zapatos y abrigos',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[700],
-                        ),
-                      ),
-                    ],
+    return Column(
+      children: [
+        SizedBox(
+          height: 56,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            itemCount: ClothingSection.values.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, i) {
+              final section = ClothingSection.values[i];
+              final selected = _selectedSection == section;
+              return ChoiceChip(
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(section.icon, size: 16,
+                        color: selected ? Colors.white : Colors.black87),
+                    const SizedBox(width: 4),
+                    Text(section.label),
+                  ],
+                ),
+                selected: selected,
+                selectedColor: const Color(0xFF6C63FF),
+                labelStyle: TextStyle(
+                  color: selected ? Colors.white : Colors.black87,
+                  fontSize: 13,
+                ),
+                onSelected: (_) =>
+                    setState(() => _selectedSection = section),
+              );
+            },
+          ),
+        ),
+        Expanded(
+          child: FutureBuilder<List<ClothingProduct>>(
+            future: _futureProducts,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              }
+
+              final filtered = (snapshot.data ?? [])
+                  .where((p) => _matchesSection(p, _selectedSection))
+                  .toList();
+
+              if (filtered.isEmpty) {
+                return Center(
+                  child: Text(
+                    'No hay productos en ${_selectedSection.label}',
+                    style: TextStyle(color: Colors.grey[500]),
                   ),
+                );
+              }
+
+              return ListView.builder(
+                itemCount: filtered.length,
+                itemBuilder: (context, i) =>
+                    ProductCard(product: filtered[i]),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// Tab 2: Mi Armario (prendas personales)
+// ─────────────────────────────────────────────
+class _WardrobeTab extends StatefulWidget {
+  const _WardrobeTab();
+
+  @override
+  State<_WardrobeTab> createState() => _WardrobeTabState();
+}
+
+class _WardrobeTabState extends State<_WardrobeTab> {
+  final CameraService _cameraService = CameraService();
+  final TextEditingController _nameController = TextEditingController();
+  String _selectedCategory = 'Camiseta';
+  String _filterCategory = 'Todas';
+
+  final List<String> _categories = [
+    'Camiseta', 'Pantalón', 'Zapatos', 'Chaqueta',
+    'Accesorio', 'Vestido', 'Falda', 'Otro',
+  ];
+
+  List<String> get _filterOptions => ['Todas', ..._categories];
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _showAddGarmentSheet() {
+    _nameController.clear();
+    _selectedCategory = 'Camiseta';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        String? photoPath;
+        return StatefulBuilder(
+          builder: (ctx, setSheet) => Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+              left: 24, right: 24, top: 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('Añadir Prenda',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 20),
+                GestureDetector(
+                  onTap: () async {
+                    final p = await _cameraService.takePhoto();
+                    if (p != null) setSheet(() => photoPath = p);
+                  },
+                  child: Container(
+                    height: 180,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.grey[300]!, width: 2),
+                    ),
+                    child: photoPath != null
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Image.file(File(photoPath!),
+                                fit: BoxFit.cover, width: double.infinity),
+                          )
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.camera_alt,
+                                  size: 48, color: Colors.grey[400]),
+                              const SizedBox(height: 8),
+                              Text('Toca para tomar foto',
+                                  style: TextStyle(
+                                      color: Colors.grey[500], fontSize: 16)),
+                            ],
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Nombre de la prenda',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: const Icon(Icons.edit),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _selectedCategory,
+                  decoration: InputDecoration(
+                    labelText: 'Categoría',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: const Icon(Icons.category),
+                  ),
+                  items: _categories
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                      .toList(),
+                  onChanged: (v) =>
+                      setSheet(() => _selectedCategory = v ?? 'Camiseta'),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    if (_nameController.text.isEmpty || photoPath == null) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                          content: Text(
+                              'Debes tomar una foto y escribir un nombre')));
+                      return;
+                    }
+                    final garment = Garment(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      name: _nameController.text.trim(),
+                      category: _selectedCategory,
+                      imagePath: photoPath!,
+                    );
+                    context.read<WardrobeProvider>().addGarment(garment);
+                    Navigator.pop(ctx);
+                  },
+                  icon: const Icon(Icons.save),
+                  label: const Text('Guardar Prenda'),
                 ),
               ],
             ),
           ),
-          SizedBox(
-            height: 54,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemBuilder: (context, index) {
-                final section = ClothingSection.values[index];
-                return ChoiceChip(
-                  label: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(section.icon, size: 18),
-                      const SizedBox(width: 6),
-                      Text(section.label),
-                    ],
-                  ),
-                  selected: _selectedSection == section,
-                  selectedColor: Colors.deepPurple,
-                  backgroundColor: Colors.grey.shade200,
-                  labelStyle: TextStyle(
-                    color: _selectedSection == section
-                        ? Colors.white
-                        : Colors.black87,
-                  ),
-                  onSelected: (_) {
-                    setState(() {
-                      _selectedSection = section;
-                    });
-                  },
-                );
-              },
-              separatorBuilder: (context, index) => const SizedBox(width: 10),
-              itemCount: ClothingSection.values.length,
-            ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<WardrobeProvider>(
+      builder: (context, wardrobe, _) {
+        final allGarments = wardrobe.garments;
+        final garments = _filterCategory == 'Todas'
+            ? allGarments
+            : allGarments
+                .where((g) => g.category == _filterCategory)
+                .toList();
+
+        return Scaffold(
+          floatingActionButton: FloatingActionButton(
+            onPressed: _showAddGarmentSheet,
+            child: const Icon(Icons.add),
           ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: FutureBuilder<List<ClothingProduct>>(
-              future: _futureProducts,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text(
-                        'Error al cargar los productos. Verifica tu conexión e inténtalo de nuevo.\n\n${snapshot.error}',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                    ),
-                  );
-                }
-
-                final apiProducts = snapshot.data ?? [];
-                final allProducts = [...apiProducts, ..._wardrobeProducts];
-                final filteredProducts = _filterProducts(
-                  allProducts,
-                  _selectedSection,
-                );
-
-                if (filteredProducts.isEmpty) {
-                  return Center(
-                    child: Text(
-                      'No hay productos para ${_selectedSection.label.toLowerCase()}.',
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  itemCount: filteredProducts.length,
+          body: Column(
+            children: [
+              SizedBox(
+                height: 56,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  itemCount: _filterOptions.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, i) {
+                    final opt = _filterOptions[i];
+                    final selected = _filterCategory == opt;
+                    return ChoiceChip(
+                      label: Text(opt),
+                      selected: selected,
+                      onSelected: (_) =>
+                          setState(() => _filterCategory = opt),
+                    );
+                  },
+                ),
+              ),
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(16),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: garments.length,
                   itemBuilder: (context, index) {
-                    return ProductCard(product: filteredProducts[index]);
+                    final garment = garments[index];
+                    return Dismissible(
+                      key: Key(garment.id),
+                      direction: DismissDirection.up,
+                      onDismissed: (_) {
+                        // VIBRACIÓN AL ELIMINAR
+                        HapticFeedback.vibrate(); 
+                        wardrobe.removeGarment(garment.id);
+                      },
+                      background: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.red[400],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.delete, color: Colors.white, size: 40),
+                      ),
+                      child: Card(
+                        clipBehavior: Clip.antiAlias,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: Image.file(
+                                File(garment.imagePath), 
+                                fit: BoxFit.cover
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                garment.name, 
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
                   },
-                );
-              },
-            ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddOptions,
-        icon: const Icon(Icons.add),
-        label: const Text('Agregar Ropa'),
-      ),
+        );
+      },
     );
   }
 }
