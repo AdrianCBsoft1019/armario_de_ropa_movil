@@ -14,72 +14,23 @@ void main() {
   );
 }
 
-enum Category { camisetas, zapatos, pantalones, chaquetas }
-
-extension CategoryInfo on Category {
-  String get label {
-    switch (this) {
-      case Category.camisetas:
-        return 'Camisetas';
-      case Category.zapatos:
-        return 'Zapatos';
-      case Category.pantalones:
-        return 'Pantalones';
-      case Category.chaquetas:
-        return 'Chaquetas';
-    }
-  }
-
-  IconData get icon {
-    switch (this) {
-      case Category.camisetas:
-        return Icons.checkroom;
-      case Category.zapatos:
-        return Icons.directions_run;
-      case Category.pantalones:
-        return Icons.straight;
-      case Category.chaquetas:
-        return Icons.shopping_bag;
-    }
-  }
-}
-
-class Garment {
-  Garment({
-    required this.id,
-    required this.name,
-    required this.category,
-    this.photo,
-    this.isFavorite = false,
-  });
-
-  final String id;
-  String name;
-  Category category;
-  XFile? photo;
-  bool isFavorite;
-}
-
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => WardrobeProvider(),
-      child: MaterialApp(
-        title: 'Armario Digital',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF6C63FF),
-            brightness: Brightness.light,
-          ),
-          useMaterial3: true,
-          fontFamily: 'Roboto',
+    return MaterialApp(
+      title: 'Armario Digital',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6C63FF),
+          brightness: Brightness.light,
         ),
-        home: const HomeScreen(),
+        useMaterial3: true,
+        fontFamily: 'Roboto',
       ),
+      home: const HomeScreen(),
     );
   }
 }
@@ -135,16 +86,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 16),
                   const Text(
                     'Añadir Prenda',
@@ -152,6 +93,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
+
+                  /// FOTO
                   GestureDetector(
                     onTap: () async {
                       final path = await _cameraService.takePhoto();
@@ -169,8 +112,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: photoPath != null
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(14),
-                              child: Image.file(File(photoPath!),
-                                  fit: BoxFit.cover, width: double.infinity),
+                              child: Image.file(
+                                File(photoPath!),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                              ),
                             )
                           : Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -186,7 +132,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                     ),
                   ),
+
                   const SizedBox(height: 16),
+
+                  /// NOMBRE
                   TextField(
                     controller: _nameController,
                     decoration: InputDecoration(
@@ -196,7 +145,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       prefixIcon: const Icon(Icons.edit),
                     ),
                   ),
+
                   const SizedBox(height: 12),
+
+                  /// CATEGORIA
                   DropdownButtonFormField<String>(
                     value: _selectedCategory,
                     decoration: InputDecoration(
@@ -214,7 +166,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           () => _selectedCategory = value ?? 'Camiseta');
                     },
                   ),
+
                   const SizedBox(height: 20),
+
+                  /// GUARDAR
                   ElevatedButton.icon(
                     onPressed: () {
                       if (_nameController.text.isEmpty || photoPath == null) {
@@ -233,12 +188,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         imagePath: photoPath!,
                       );
 
-                      // Usar Provider en lugar de setState local
                       context
                           .read<WardrobeProvider>()
                           .addGarment(garment);
 
                       Navigator.pop(context);
+
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                             content:
@@ -247,11 +202,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                     icon: const Icon(Icons.save),
                     label: const Text('Guardar Prenda'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
                   ),
                 ],
               ),
@@ -280,22 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
             centerTitle: true,
           ),
           body: garments.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.checkroom, size: 80, color: Colors.grey[300]),
-                      const SizedBox(height: 16),
-                      Text('Tu armario está vacío',
-                          style: TextStyle(
-                              fontSize: 18, color: Colors.grey[500])),
-                      const SizedBox(height: 8),
-                      Text('Toca + para añadir tu primera prenda',
-                          style: TextStyle(
-                              fontSize: 14, color: Colors.grey[400])),
-                    ],
-                  ),
-                )
+              ? const Center(child: Text('Tu armario está vacío'))
               : GridView.builder(
                   padding: const EdgeInsets.all(16),
                   gridDelegate:
@@ -308,56 +243,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   itemCount: garments.length,
                   itemBuilder: (context, index) {
                     final garment = garments[index];
+
                     return Card(
-                      clipBehavior: Clip.antiAlias,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                      elevation: 2,
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Expanded(
-                            child: Image.file(File(garment.imagePath),
-                                fit: BoxFit.cover),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(garment.name,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis),
-                                      Text(garment.category,
-                                          style: TextStyle(
-                                              color: Colors.grey[600],
-                                              fontSize: 12)),
-                                    ],
-                                  ),
-                                ),
-                                GestureDetector(
-                                  onTap: () =>
-                                      wardrobe.toggleFavorite(garment.id),
-                                  child: Icon(
-                                    garment.isFavorite
-                                        ? Icons.favorite
-                                        : Icons.favorite_border,
-                                    color: garment.isFavorite
-                                        ? Colors.red
-                                        : Colors.grey,
-                                    size: 20,
-                                  ),
-                                ),
-                              ],
+                            child: Image.file(
+                              File(garment.imagePath),
+                              fit: BoxFit.cover,
                             ),
                           ),
+                          Text(garment.name),
+                          Text(garment.category),
                         ],
                       ),
                     );
